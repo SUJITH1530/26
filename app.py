@@ -45,6 +45,13 @@ def dashboard():
     return render_template('dashboard.html')
 
 
+@app.route('/clear-images', methods=['POST'])
+def clear_images():
+    """Clear all stored lane preview images on dashboard load."""
+    for lane in shared_state['lanes']:
+        shared_state['lanes'][lane]['image'] = None
+    return jsonify({'status': 'cleared'})
+
 
 @app.route('/upload', methods=['POST'])
 def upload_image():
