@@ -1,0 +1,5 @@
+Flask>=2.0
+opencv-python-headless>=4.5
+numpy>=1.21
+# RPi.GPIO is optional and only needed on Raspberry Pi
+RPi.GPIO; platform_system=='Linux'

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg*
+.eggs/
+build/
+dist/
+*.log
+
+# Virtual environments
+.env
+.venv
+ENV/
+env/
+venv/
+
+# IDE/editor
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Images/uploads (generated)
+static/uploads/
+static/processed/
+
+# Local binaries
+ngrok.exe
+
+# Byte-compiled
+*.sqlite
+
