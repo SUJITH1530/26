@@ -122,18 +122,22 @@
             <div class="preview-item">
                 <div style="margin-bottom:6px; opacity:0.8;">Lane 1</div>
                 <img id="img_lane1" src="" alt="Lane 1" />
+                <div class="density-badge" id="d_lane1">0% density</div>
             </div>
             <div class="preview-item">
                 <div style="margin-bottom:6px; opacity:0.8;">Lane 2</div>
                 <img id="img_lane2" src="" alt="Lane 2" />
+                <div class="density-badge" id="d_lane2">0% density</div>
             </div>
             <div class="preview-item">
                 <div style="margin-bottom:6px; opacity:0.8;">Lane 3</div>
                 <img id="img_lane3" src="" alt="Lane 3" />
+                <div class="density-badge" id="d_lane3">0% density</div>
             </div>
             <div class="preview-item">
                 <div style="margin-bottom:6px; opacity:0.8;">Lane 4</div>
                 <img id="img_lane4" src="" alt="Lane 4" />
+                <div class="density-badge" id="d_lane4">0% density</div>
             </div>
         </div>
     </div>
@@ -180,6 +184,12 @@ const previewImgs = {
     lane2: document.getElementById('img_lane2'),
     lane3: document.getElementById('img_lane3'),
     lane4: document.getElementById('img_lane4'),
+};
+const densityEls = {
+    lane1: document.getElementById('d_lane1'),
+    lane2: document.getElementById('d_lane2'),
+    lane3: document.getElementById('d_lane3'),
+    lane4: document.getElementById('d_lane4'),
 };
 const countEls = {
     lane1: document.getElementById('c_lane1'),
@@ -325,6 +335,7 @@ function showResults(data) {
     recommend.style.display = 'block';
     recommend.textContent = `Recommended signal switch time for ${lane.replace('lane','Lane ')}: ${data.green_time} seconds`;
     Object.keys(countEls).forEach(k => { countEls[k].textContent = laneCounts[k]; });
+    updateDensityBadges();
     if (data.lanes) applyServerLanes(data.lanes);
     // update signal simulation
     setLights(lane, 'green');
@@ -356,6 +367,7 @@ function applyServerLanes(lanes) {
         const img = lanes[l] && lanes[l].image;
         if (img) previewImgs[l].src = img;
     });
+    updateDensityBadges();
     const order = Object.entries(laneCounts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).map(e=>e[0]);
     showOrder(order);
 }
@@ -385,6 +397,16 @@ function computeGreenTime(count) {
     if (count <= 5) return 10;
     if (count <= 15) return 20;
     return 30;
+}
+
+function updateDensityBadges() {
+    const maxCount = Math.max(...Object.values(laneCounts || {}), 0);
+    const baseline = maxCount || 1;
+    ['lane1','lane2','lane3','lane4'].forEach(l => {
+        const pct = Math.round(((laneCounts[l] || 0) / baseline) * 100);
+        const el = densityEls[l];
+        if (el) el.textContent = `${pct}% density`;
+    });
 }
 
 function resetLaneTimers() {
