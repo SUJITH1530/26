@@ -124,21 +124,25 @@
                 <div style="margin-bottom:6px; opacity:0.8;">Lane 1</div>
                 <img id="img_lane1" src="" alt="Lane 1" />
                 <div class="density-badge" id="d_lane1">0% density</div>
+                <button class="lane-action" data-lane="lane1">Delete/Reset</button>
             </div>
             <div class="preview-item">
                 <div style="margin-bottom:6px; opacity:0.8;">Lane 2</div>
                 <img id="img_lane2" src="" alt="Lane 2" />
                 <div class="density-badge" id="d_lane2">0% density</div>
+                <button class="lane-action" data-lane="lane2">Delete/Reset</button>
             </div>
             <div class="preview-item">
                 <div style="margin-bottom:6px; opacity:0.8;">Lane 3</div>
                 <img id="img_lane3" src="" alt="Lane 3" />
                 <div class="density-badge" id="d_lane3">0% density</div>
+                <button class="lane-action" data-lane="lane3">Delete/Reset</button>
             </div>
             <div class="preview-item">
                 <div style="margin-bottom:6px; opacity:0.8;">Lane 4</div>
                 <img id="img_lane4" src="" alt="Lane 4" />
                 <div class="density-badge" id="d_lane4">0% density</div>
+                <button class="lane-action" data-lane="lane4">Delete/Reset</button>
             </div>
         </div>
     </div>
@@ -192,6 +196,7 @@ const densityEls = {
     lane3: document.getElementById('d_lane3'),
     lane4: document.getElementById('d_lane4'),
 };
+const deleteButtons = Array.from(document.querySelectorAll('.lane-action'));
 const countEls = {
     lane1: document.getElementById('c_lane1'),
     lane2: document.getElementById('c_lane2'),
@@ -414,6 +419,27 @@ function resetLaneTimers() {
     Object.values(laneTimerEls).forEach(el => { if (el) el.textContent = '-'; });
 }
 
+async function clearLane(lane) {
+    try {
+        const res = await fetch('/clear-lane', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lane })
+        });
+        const data = await res.json();
+        if (data && data.lanes) {
+            applyServerLanes(data.lanes);
+        }
+        // defensive UI reset
+        laneCounts[lane] = 0;
+        laneGreen[lane] = computeGreenTime(0);
+        if (previewImgs[lane]) previewImgs[lane].src = '';
+        updateDensityBadges();
+    } catch (err) {
+        console.error(err);
+    }
+}
+
 document.getElementById('startCycleBtn').addEventListener('click', () => {
     cycling = true;
     runCycle();
@@ -427,6 +453,13 @@ document.getElementById('stopCycleBtn').addEventListener('click', () => {
 async function runCycle() {
     while (cycling) {
         // pick order based on counts (highest first). If all zero, use numeric order
+
+deleteButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const lane = btn.getAttribute('data-lane');
+        clearLane(lane);
+    });
+});
         let entries;
         if (Array.isArray(fixedOrder) && fixedOrder.length) {
             entries = fixedOrder.map(l => [l, laneCounts[l] ?? 0]);

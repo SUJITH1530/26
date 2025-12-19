@@ -53,6 +53,19 @@ def clear_images():
     return jsonify({'status': 'cleared'})
 
 
+@app.route('/clear-lane', methods=['POST'])
+def clear_lane():
+    """Reset a single lane: clears image and zeroes counts."""
+    data = request.get_json(silent=True) or {}
+    lane = data.get('lane')
+    if lane not in shared_state['lanes']:
+        return jsonify({'error': 'invalid lane'}), 400
+    shared_state['lanes'][lane]['image'] = None
+    shared_state['lanes'][lane]['count'] = 0
+    shared_state['lanes'][lane]['green_time'] = calculate_green_time(0)
+    return jsonify({'status': 'cleared', 'lanes': shared_state['lanes']})
+
+
 @app.route('/upload', methods=['POST'])
 def upload_image():
     # Accept multipart file or JSON {image: dataURL}
