@@ -247,6 +247,16 @@ def upload_image():
     if lane:
         _update_lane(lane, vehicles, processed_name, has_emergency, emergency_count, 
                     vehicle_types, occupancy_rate, queue_length, avg_speed)
+    
+    # Convert deques to lists for JSON serialization
+    lanes_data = {}
+    for lane_key in ['lane1', 'lane2', 'lane3', 'lane4']:
+        if lane_key in shared_state['lanes']:
+            lane_data = dict(shared_state['lanes'][lane_key])
+            if 'traffic_history' in lane_data:
+                lane_data['traffic_history'] = list(lane_data['traffic_history'])
+            lanes_data[lane_key] = lane_data
+    
     return jsonify({
         'processed_image': f"/static/processed/{processed_name}",
         'vehicles': vehicles,
@@ -260,7 +270,7 @@ def upload_image():
         'emergency_count': emergency_count,
         'emergency_details': emergency_details,
         'emergency_conf': emergency_conf,
-        'lanes': shared_state['lanes']
+        'lanes': lanes_data
     })
 
 
@@ -340,7 +350,17 @@ def upload_multi():
     # Build order by highest count
     order = sorted(shared_state['lanes'].items(), key=lambda kv: kv[1]['count'], reverse=True)
     order = [k for k, _ in order]
-    return jsonify({'lanes': shared_state['lanes'], 'results': results, 'order': order})
+    
+    # Convert deques to lists for JSON serialization
+    lanes_data = {}
+    for lane_key in ['lane1', 'lane2', 'lane3', 'lane4']:
+        if lane_key in shared_state['lanes']:
+            lane_data = dict(shared_state['lanes'][lane_key])
+            if 'traffic_history' in lane_data:
+                lane_data['traffic_history'] = list(lane_data['traffic_history'])
+            lanes_data[lane_key] = lane_data
+    
+    return jsonify({'lanes': lanes_data, 'results': results, 'order': order})
 
 
 def start_detector_and_gpio():
