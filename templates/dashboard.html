@@ -47,7 +47,7 @@
                 </select>
             </div>
             <div style="margin-top:8px">
-                <button id="multiBtn" type="button">Upload 4 Lanes</button>
+                <label for="multiInput" id="multiBtn" style="cursor:pointer; padding:10px 16px; background:#2563eb; color:white; border-radius:8px; display:inline-block;">Upload 4 Lanes</label>
                 <input id="multiInput" type="file" multiple accept="image/*" style="display:none">
                 <small style="margin-left:8px; opacity:0.8;">Select up to 4 images (order maps to Lane1..4)</small>
             </div>
@@ -641,6 +641,7 @@ fileInput.addEventListener('change', async (e) => {
 
 async function uploadFile(f) {
     try {
+        console.log('uploadFile called with:', f.name);
         const form = new FormData();
         form.append('image', f);
         form.append('lane', laneSelect.value);
@@ -652,6 +653,7 @@ async function uploadFile(f) {
             return;
         }
         const data = await res.json();
+        console.log('Upload response:', data);
         showResults(data);
     } catch (err) {
         console.error('Upload error:', err);
@@ -709,7 +711,17 @@ multiInput.addEventListener('change', async (e) => {
 });
 
 function showResults(data) {
-    if (!data || !data.processed_image) return;
+    console.log('showResults called with:', data);
+    if (!data) {
+        console.warn('No data provided to showResults');
+        return;
+    }
+    if (!data.processed_image) {
+        console.warn('No processed_image in response:', data);
+        return;
+    }
+    
+    console.log('Displaying processed image:', data.processed_image);
     processedImg.style.display = 'block';
     processedImg.src = data.processed_image;
     laneLabel.style.display = 'block';
