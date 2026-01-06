@@ -393,7 +393,6 @@ def process_image(in_path, out_dir, min_area=400):
                 continue
             
             boxes.append((x, y, ww, hh, area))
-            boxes.append((x, y, ww, hh, area))
         
         # Sort boxes by area (largest first) to prioritize larger vehicles
         boxes.sort(key=lambda b: b[4], reverse=True)
