@@ -108,12 +108,58 @@ button {
 }
 .preview-item {
     background: #111827;
-    border-radius: 8px;
-    padding: 10px;
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
 }
 .preview-item img {
     width: 100%;
     border-radius: 6px;
+}
+.preview-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.preview-title {
+    font-weight: 700;
+    color: #e2e8f0;
+}
+.preview-img {
+    display: none;
+    margin-bottom: 10px;
+}
+.preview-section {
+    background: #1f2937;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 10px;
+}
+.preview-section-title {
+    font-weight: 700;
+    color: #38bdf8;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+.kv-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 13px;
+    color: #e2e8f0;
+}
+.kv-list li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 0;
+}
+.kv-list li span:last-child {
+    font-weight: 700;
+    color: #cbd5e1;
 }
 .density-badge {
     display: inline-block;
