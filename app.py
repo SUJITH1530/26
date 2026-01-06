@@ -6,6 +6,7 @@ import threading
 import base64
 from werkzeug.utils import secure_filename
 import random
+import time
 
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -19,25 +20,45 @@ shared_state = {
             'count': 0,
             'green_time': 10,
             'image': None,
-            'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0}
+            'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0},
+            'occupancy_rate': 0.0,
+            'queue_length': 0,
+            'avg_speed': 0,
+            'traffic_history': [],  # list of {'ts': epoch, 'count': n}
+            'traffic_volume_5m': 0,
         },
         'lane2': {
             'count': 0,
             'green_time': 10,
             'image': None,
-            'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0}
+            'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0},
+            'occupancy_rate': 0.0,
+            'queue_length': 0,
+            'avg_speed': 0,
+            'traffic_history': [],
+            'traffic_volume_5m': 0,
         },
         'lane3': {
             'count': 0,
             'green_time': 10,
             'image': None,
-            'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0}
+            'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0},
+            'occupancy_rate': 0.0,
+            'queue_length': 0,
+            'avg_speed': 0,
+            'traffic_history': [],
+            'traffic_volume_5m': 0,
         },
         'lane4': {
             'count': 0,
             'green_time': 10,
             'image': None,
-            'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0}
+            'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0},
+            'occupancy_rate': 0.0,
+            'queue_length': 0,
+            'avg_speed': 0,
+            'traffic_history': [],
+            'traffic_volume_5m': 0,
         },
     },
 }
@@ -77,6 +98,25 @@ def _update_lane(lane: str, count: int, processed_name: str | None, classes: dic
                     pass
     shared_state['lanes'][lane]['vehicle_types'] = vt
 
+    # basic derived metrics
+    occupancy = min(100, int((count / 20) * 100)) if count >= 0 else 0  # assume 20 vehicles ~ full
+    queue_len = max(0, int(count * 5))  # 5m per vehicle heuristic
+    speed = max(5, int(60 * (1 - occupancy / 120))) if occupancy < 120 else 5  # simple inverse relation
+    shared_state['lanes'][lane]['occupancy_rate'] = float(occupancy)
+    shared_state['lanes'][lane]['queue_length'] = queue_len
+    shared_state['lanes'][lane]['avg_speed'] = speed
+
+    # track traffic volume in last 5 minutes
+    now = time.time()
+    history = shared_state['lanes'][lane].get('traffic_history') or []
+    history.append({'ts': now, 'count': int(count)})
+    # keep last 5 minutes
+    horizon = now - 300
+    history = [h for h in history if h.get('ts', 0) >= horizon]
+    shared_state['lanes'][lane]['traffic_history'] = history
+    volume_5m = sum(h.get('count', 0) for h in history)
+    shared_state['lanes'][lane]['traffic_volume_5m'] = int(volume_5m)
+
 @app.route('/data')
 def data():
     return jsonify(shared_state)
@@ -111,6 +151,11 @@ def clear_lane():
     shared_state['lanes'][lane]['count'] = 0
     shared_state['lanes'][lane]['green_time'] = calculate_green_time(0)
     shared_state['lanes'][lane]['vehicle_types'] = {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0}
+    shared_state['lanes'][lane]['occupancy_rate'] = 0.0
+    shared_state['lanes'][lane]['queue_length'] = 0
+    shared_state['lanes'][lane]['avg_speed'] = 0
+    shared_state['lanes'][lane]['traffic_history'] = []
+    shared_state['lanes'][lane]['traffic_volume_5m'] = 0
     return jsonify({'status': 'cleared', 'lanes': shared_state['lanes']})
 
 

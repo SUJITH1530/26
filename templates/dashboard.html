@@ -125,6 +125,12 @@
                 <img id="img_lane1" src="" alt="Lane 1" />
                 <div class="density-badge" id="d_lane1">0% density</div>
                 <div id="vd_lane1" style="margin-top:6px; font-size:0.95em; opacity:0.9;">Vehicle Distribution — Cars: 0 Trucks: 0 Buses: 0 Two-Wheelers: 0 Bicycles: 0</div>
+                <div style="margin-top:8px; font-size:0.95em; opacity:0.9;">
+                    <div>Occupancy: <span id="occ_lane1">0%</span></div>
+                    <div>Queue Length: <span id="queue_lane1">0</span> m</div>
+                    <div>Avg Speed: <span id="speed_lane1">--</span> km/h</div>
+                    <div>Traffic Volume (5m): <span id="vol_lane1">0</span></div>
+                </div>
                 <button class="lane-action" data-lane="lane1">Delete/Reset</button>
             </div>
             <div class="preview-item">
@@ -132,6 +138,12 @@
                 <img id="img_lane2" src="" alt="Lane 2" />
                 <div class="density-badge" id="d_lane2">0% density</div>
                 <div id="vd_lane2" style="margin-top:6px; font-size:0.95em; opacity:0.9;">Vehicle Distribution — Cars: 0 Trucks: 0 Buses: 0 Two-Wheelers: 0 Bicycles: 0</div>
+                <div style="margin-top:8px; font-size:0.95em; opacity:0.9;">
+                    <div>Occupancy: <span id="occ_lane2">0%</span></div>
+                    <div>Queue Length: <span id="queue_lane2">0</span> m</div>
+                    <div>Avg Speed: <span id="speed_lane2">--</span> km/h</div>
+                    <div>Traffic Volume (5m): <span id="vol_lane2">0</span></div>
+                </div>
                 <button class="lane-action" data-lane="lane2">Delete/Reset</button>
             </div>
             <div class="preview-item">
@@ -139,6 +151,12 @@
                 <img id="img_lane3" src="" alt="Lane 3" />
                 <div class="density-badge" id="d_lane3">0% density</div>
                 <div id="vd_lane3" style="margin-top:6px; font-size:0.95em; opacity:0.9;">Vehicle Distribution — Cars: 0 Trucks: 0 Buses: 0 Two-Wheelers: 0 Bicycles: 0</div>
+                <div style="margin-top:8px; font-size:0.95em; opacity:0.9;">
+                    <div>Occupancy: <span id="occ_lane3">0%</span></div>
+                    <div>Queue Length: <span id="queue_lane3">0</span> m</div>
+                    <div>Avg Speed: <span id="speed_lane3">--</span> km/h</div>
+                    <div>Traffic Volume (5m): <span id="vol_lane3">0</span></div>
+                </div>
                 <button class="lane-action" data-lane="lane3">Delete/Reset</button>
             </div>
             <div class="preview-item">
@@ -146,6 +164,12 @@
                 <img id="img_lane4" src="" alt="Lane 4" />
                 <div class="density-badge" id="d_lane4">0% density</div>
                 <div id="vd_lane4" style="margin-top:6px; font-size:0.95em; opacity:0.9;">Vehicle Distribution — Cars: 0 Trucks: 0 Buses: 0 Two-Wheelers: 0 Bicycles: 0</div>
+                <div style="margin-top:8px; font-size:0.95em; opacity:0.9;">
+                    <div>Occupancy: <span id="occ_lane4">0%</span></div>
+                    <div>Queue Length: <span id="queue_lane4">0</span> m</div>
+                    <div>Avg Speed: <span id="speed_lane4">--</span> km/h</div>
+                    <div>Traffic Volume (5m): <span id="vol_lane4">0</span></div>
+                </div>
                 <button class="lane-action" data-lane="lane4">Delete/Reset</button>
             </div>
         </div>
@@ -205,6 +229,32 @@ const vehicleDistEls = {
     lane2: document.getElementById('vd_lane2'),
     lane3: document.getElementById('vd_lane3'),
     lane4: document.getElementById('vd_lane4'),
+};
+const laneMetricsEls = {
+    lane1: {
+        occ: document.getElementById('occ_lane1'),
+        queue: document.getElementById('queue_lane1'),
+        speed: document.getElementById('speed_lane1'),
+        vol: document.getElementById('vol_lane1'),
+    },
+    lane2: {
+        occ: document.getElementById('occ_lane2'),
+        queue: document.getElementById('queue_lane2'),
+        speed: document.getElementById('speed_lane2'),
+        vol: document.getElementById('vol_lane2'),
+    },
+    lane3: {
+        occ: document.getElementById('occ_lane3'),
+        queue: document.getElementById('queue_lane3'),
+        speed: document.getElementById('speed_lane3'),
+        vol: document.getElementById('vol_lane3'),
+    },
+    lane4: {
+        occ: document.getElementById('occ_lane4'),
+        queue: document.getElementById('queue_lane4'),
+        speed: document.getElementById('speed_lane4'),
+        vol: document.getElementById('vol_lane4'),
+    },
 };
 const deleteButtons = Array.from(document.querySelectorAll('.lane-action'));
 const countEls = {
@@ -390,6 +440,17 @@ function applyServerLanes(lanes) {
             const tw = vt.two_wheeler ?? 0;
             const bikes = vt.bicycle ?? 0;
             vehicleDistEls[l].textContent = `Vehicle Distribution — Cars: ${cars} Trucks: ${trucks} Buses: ${buses} Two-Wheelers: ${tw} Bicycles: ${bikes}`;
+        }
+        const metrics = laneMetricsEls[l];
+        if (metrics && lanes[l]) {
+            const occ = lanes[l].occupancy_rate ?? 0;
+            const queue = lanes[l].queue_length ?? 0;
+            const speed = lanes[l].avg_speed ?? '--';
+            const vol = lanes[l].traffic_volume_5m ?? 0;
+            if (metrics.occ) metrics.occ.textContent = `${Math.round(occ)}%`;
+            if (metrics.queue) metrics.queue.textContent = queue;
+            if (metrics.speed) metrics.speed.textContent = speed;
+            if (metrics.vol) metrics.vol.textContent = vol;
         }
     });
     updateDensityBadges();
