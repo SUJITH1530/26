@@ -28,7 +28,7 @@
         <h3>Upload lane images</h3>
         <div id="drop" class="upload-box">
             <span>Drag and drop files here</span>
-            <button id="browseBtn" type="button">Browse files</button>
+            <label for="fileInput" id="browseLabel" style="cursor:pointer; padding:10px 16px; background:#2563eb; color:white; border-radius:8px;">Browse files</label>
             <input id="fileInput" type="file" accept="image/*" style="display:none">
         </div>
         <div style="margin-top:10px">
@@ -431,7 +431,7 @@ const classList = document.getElementById('classList');
 const laneLabel = document.getElementById('laneLabel');
 const recommend = document.getElementById('recommend');
 const drop = document.getElementById('drop');
-const browseBtn = document.getElementById('browseBtn');
+const browseBtn = document.getElementById('browseLabel') || document.getElementById('browseBtn');
 const openSeconds = document.getElementById('openSeconds');
 const openLane = document.getElementById('openLane');
 const laneSelect = document.getElementById('laneSelect');
@@ -582,13 +582,22 @@ startBtn.addEventListener('click', async () => {
     }
 });
 
-browseBtn.addEventListener('click', () => {
-    console.log('Browse button clicked, fileInput:', fileInput);
-    if (fileInput) fileInput.click();
+browseBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    console.log('Browse clicked, triggering fileInput');
+    if (fileInput) {
+        // Force focus and click
+        fileInput.focus();
+        fileInput.click();
+    }
 });
-multiBtn.addEventListener('click', () => {
-    console.log('Multi button clicked, multiInput:', multiInput);
-    if (multiInput) multiInput.click();
+multiBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    console.log('Multi button clicked, triggering multiInput');
+    if (multiInput) {
+        multiInput.focus();
+        multiInput.click();
+    }
 });
 drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('hover'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('hover'));
