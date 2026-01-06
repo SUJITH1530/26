@@ -42,12 +42,39 @@
                     <option value="lane3">Lane 3</option>
                     <option value="lane4">Lane 4</option>
                 </select>
+                <label style="margin-left:12px; font-size:0.9em; opacity:0.9;">
+                    <input id="emergencyChk" type="checkbox" style="margin-right:6px;">Emergency vehicle in image
+                </label>
             </div>
             <div style="margin-top:8px">
                 <button id="multiBtn" type="button">Upload 4 Lanes</button>
                 <input id="multiInput" type="file" multiple accept="image/*" style="display:none">
                 <small style="margin-left:8px; opacity:0.8;">Select up to 4 images (order maps to Lane1..4)</small>
             </div>
+        </div>
+    </div>
+
+    <div class="card" style="max-width:900px; width:95%; text-align:left;">
+        <h3>Emergency Vehicle Detection &amp; Priority Control</h3>
+        <p id="autoEmergencyStatus" style="margin:0; opacity:0.85;">No emergency vehicles detected. System in normal mode.</p>
+    </div>
+
+    <div class="card card-warning" style="max-width:900px; width:95%; text-align:left;">
+        <h3>Manual Emergency Control (Traffic Police Override)</h3>
+        <p style="margin:0 0 10px 0;">Use this for manual emergency vehicle priority when AI detection fails. This has the <b>HIGHEST</b> priority over automatic detection.</p>
+
+        <div style="margin-top:8px; font-weight:600;">Select Lane for Emergency:</div>
+        <div class="radio-row" style="margin-top:6px;">
+            <label><input type="radio" name="manualEmergencyLane" value="lane1"> Lane 1</label>
+            <label><input type="radio" name="manualEmergencyLane" value="lane2"> Lane 2</label>
+            <label><input type="radio" name="manualEmergencyLane" value="lane3"> Lane 3</label>
+            <label><input type="radio" name="manualEmergencyLane" value="lane4"> Lane 4</label>
+        </div>
+
+        <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <button id="activateManualEmergencyBtn" type="button">Activate Manual Emergency</button>
+            <button id="clearManualEmergencyBtn" type="button" style="display:none; background:#475569;">Clear Manual Emergency</button>
+            <span id="manualEmergencyStatus" style="opacity:0.8;"></span>
         </div>
     </div>
 
@@ -122,10 +149,8 @@
         <div style="margin-top:10px">
             <button id="startCycleBtn">Start Signal Cycle</button>
             <button id="stopCycleBtn" style="background:#ef4444; margin-left:8px;">Stop</button>
-            <button id="clearEmergencyBtn" style="background:#475569; margin-left:8px;">Clear Emergency</button>
             <small style="margin-left:10px; opacity:0.8;">Cycle order is based on current lane counts (highest first).</small>
         </div>
-        <div style="margin-top:8px; opacity:0.8;">Emergency override: click a lane above to hold it GREEN until cleared.</div>
     </div>
 
     <div class="card" style="max-width:900px; width:95%; text-align:left;">
@@ -264,9 +289,9 @@ function fetchData() {
     fetch('/data')
         .then(response => response.json())
         .then(data => {
-            if (data && data.lanes) {
-                applyServerLanes(data.lanes);
-            }
+            if (!data) return;
+            if (data.lanes) applyServerLanes(data.lanes);
+            handleEmergencyFromServer(data);
         })
         .catch(err => console.error(err));
 }
@@ -288,6 +313,11 @@ const browseBtn = document.getElementById('browseBtn');
 const openSeconds = document.getElementById('openSeconds');
 const openLane = document.getElementById('openLane');
 const laneSelect = document.getElementById('laneSelect');
+const emergencyChk = document.getElementById('emergencyChk');
+const autoEmergencyStatus = document.getElementById('autoEmergencyStatus');
+const activateManualEmergencyBtn = document.getElementById('activateManualEmergencyBtn');
+const clearManualEmergencyBtn = document.getElementById('clearManualEmergencyBtn');
+const manualEmergencyStatus = document.getElementById('manualEmergencyStatus');
 const multiBtn = document.getElementById('multiBtn');
 const multiInput = document.getElementById('multiInput');
 const useOrderBtn = document.getElementById('useOrderBtn');
@@ -360,6 +390,7 @@ let emergencyActive = false;
 let emergencyLane = null;
 let resumeCycleAfterEmergency = false;
 let cycleRunId = 0;
+let emergencySource = null; // 'manual' | 'server'
 let stream = null;
 let fixedOrder = null; // set by "Use order" button
 const laneTimerEls = {
@@ -442,6 +473,7 @@ async function uploadFile(f) {
     const form = new FormData();
     form.append('image', f);
     form.append('lane', laneSelect.value);
+    form.append('emergency', emergencyChk && emergencyChk.checked ? 'true' : 'false');
     const res = await fetch('/upload', { method: 'POST', body: form });
     const data = await res.json();
     showResults(data);
@@ -451,7 +483,7 @@ async function uploadBase64(dataUrl) {
     const res = await fetch('/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: dataUrl, lane: laneSelect.value })
+        body: JSON.stringify({ image: dataUrl, lane: laneSelect.value, emergency: (emergencyChk && emergencyChk.checked) })
     });
     const data = await res.json();
     showResults(data);
@@ -647,6 +679,7 @@ function setAllReds() {
 
 function activateEmergency(lane) {
     if (!lane) return;
+    emergencySource = emergencySource || 'manual';
     emergencyActive = true;
     emergencyLane = lane;
     resumeCycleAfterEmergency = cycling || resumeCycleAfterEmergency;
@@ -667,6 +700,7 @@ function clearEmergency() {
     emergencyActive = false;
     emergencyLane = null;
     resumeCycleAfterEmergency = false;
+    emergencySource = null;
 
     resetLaneTimers();
     openLane.textContent = 'Lane 1';
@@ -678,6 +712,76 @@ function clearEmergency() {
         cycleRunId++;
         runCycle(cycleRunId);
     }
+
+    updateManualEmergencyUI();
+}
+
+function getSelectedManualLane() {
+    const el = document.querySelector('input[name="manualEmergencyLane"]:checked');
+    return el ? el.value : null;
+}
+
+function updateManualEmergencyUI() {
+    if (manualEmergencyStatus) {
+        if (emergencyActive && emergencyLane) {
+            manualEmergencyStatus.textContent = `Manual emergency active: ${emergencyLane.replace('lane', 'Lane ')}`;
+        } else {
+            manualEmergencyStatus.textContent = '';
+        }
+    }
+
+    if (activateManualEmergencyBtn) {
+        activateManualEmergencyBtn.disabled = emergencyActive;
+    }
+    if (clearManualEmergencyBtn) {
+        clearManualEmergencyBtn.style.display = emergencyActive ? 'inline-block' : 'none';
+    }
+}
+
+function handleEmergencyFromServer(data) {
+    const serverEmergency = !!data.emergency_detected;
+    const serverLane = data.emergency_lane;
+
+    if (serverEmergency && serverLane) {
+        if (!emergencyActive || emergencyLane !== serverLane || emergencySource !== 'server') {
+            emergencySource = 'server';
+            activateEmergency(serverLane);
+        }
+
+        if (autoEmergencyStatus) {
+            autoEmergencyStatus.textContent = `Emergency vehicle detected on ${serverLane.replace('lane','Lane ')}. Priority green is active.`;
+        }
+        return;
+    }
+
+    if (autoEmergencyStatus) {
+        autoEmergencyStatus.textContent = 'No emergency vehicles detected. System in normal mode.';
+    }
+
+    // if emergency ended on server, clear client hold ONLY if it was server-driven
+    if (!serverEmergency && emergencyActive && emergencySource === 'server') {
+        clearEmergency();
+    }
+}
+
+// manual emergency controls
+if (activateManualEmergencyBtn) {
+    activateManualEmergencyBtn.addEventListener('click', () => {
+        const lane = getSelectedManualLane();
+        if (!lane) {
+            alert('Select a lane for emergency first.');
+            return;
+        }
+        emergencySource = 'manual';
+        activateEmergency(lane);
+        updateManualEmergencyUI();
+    });
+}
+if (clearManualEmergencyBtn) {
+    clearManualEmergencyBtn.addEventListener('click', () => {
+        // manual override has highest priority; clearing restores normal operation
+        clearEmergency();
+    });
 }
 
 async function clearLane(lane) {
@@ -709,13 +813,6 @@ deleteButtons.forEach(btn => {
     });
 });
 
-// click a lane in the signal display to force emergency override
-['lane1','lane2','lane3','lane4'].forEach(lane => {
-    const el = document.getElementById(lane);
-    if (!el) return;
-    el.addEventListener('click', () => activateEmergency(lane));
-});
-
 document.getElementById('startCycleBtn').addEventListener('click', () => {
     if (emergencyActive) {
         alert('Emergency override is active. Clear emergency to resume normal cycling.');
@@ -740,9 +837,8 @@ document.getElementById('stopCycleBtn').addEventListener('click', () => {
     }
 });
 
-document.getElementById('clearEmergencyBtn').addEventListener('click', () => {
-    clearEmergency();
-});
+// initialize manual UI state
+updateManualEmergencyUI();
 
 async function runCycle(runId) {
     while (cycling && runId === cycleRunId && !emergencyActive) {

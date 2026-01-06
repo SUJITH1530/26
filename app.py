@@ -11,16 +11,90 @@ import time
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 
+
+def _truthy(val) -> bool:
+    if val is None:
+        return False
+    if isinstance(val, bool):
+        return val
+    s = str(val).strip().lower()
+    return s in ('1', 'true', 'yes', 'y', 'on')
+
+
+def _is_emergency_vehicle(classes: dict | None) -> bool:
+    """Best-effort emergency detection.
+
+    Default YOLO COCO labels don't include 'ambulance', so we also support
+    explicit user override via request flags.
+    """
+    if not classes or not isinstance(classes, dict):
+        return False
+    emergency_labels = {
+        'ambulance',
+        'fire truck',
+        'firetruck',
+        'police car',
+        'police',
+        'emergency',
+        'emergency_vehicle',
+    }
+    for lbl, val in classes.items():
+        try:
+            if int(val) <= 0:
+                continue
+        except Exception:
+            continue
+        if str(lbl).strip().lower() in emergency_labels:
+            return True
+    return False
+
+
+def _recompute_emergency_state():
+    # Pick the lane with the highest emergency_count among lanes still marked.
+    best_lane = None
+    best_score = -1
+    for lane, info in shared_state['lanes'].items():
+        if info.get('has_emergency'):
+            score = int(info.get('emergency_count') or 0)
+            if score > best_score:
+                best_score = score
+                best_lane = lane
+
+    if best_lane:
+        shared_state['emergency_detected'] = True
+        shared_state['emergency_lane'] = best_lane
+        shared_state['emergency_count'] = int(shared_state['lanes'][best_lane].get('emergency_count') or 0)
+        shared_state['frames_without_emergency'] = 0
+        return
+
+    # No lane currently has an emergency.
+    if shared_state.get('emergency_detected'):
+        shared_state['frames_without_emergency'] = int(shared_state.get('frames_without_emergency') or 0) + 1
+        if shared_state['frames_without_emergency'] >= int(shared_state.get('emergency_threshold') or 5):
+            shared_state['emergency_detected'] = False
+            shared_state['emergency_lane'] = None
+            shared_state['emergency_count'] = 0
+            shared_state['frames_without_emergency'] = 0
+
+
 # Shared state updated by detector thread and uploads
 shared_state = {
     'vehicles': 0,
     'green_time': calculate_green_time(0),
+    'emergency_detected': False,
+    'emergency_lane': None,
+    'emergency_count': 0,
+    'emergency_threshold': 5,
+    'frames_without_emergency': 0,
     'lanes': {
         'lane1': {
             'count': 0,
             'green_time': 10,
             'image': None,
             'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0},
+            'has_emergency': False,
+            'emergency_count': 0,
+            'frames_without_emergency': 0,
             'occupancy_rate': 0.0,
             'queue_length': 0,
             'avg_speed': 0,
@@ -32,6 +106,9 @@ shared_state = {
             'green_time': 10,
             'image': None,
             'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0},
+            'has_emergency': False,
+            'emergency_count': 0,
+            'frames_without_emergency': 0,
             'occupancy_rate': 0.0,
             'queue_length': 0,
             'avg_speed': 0,
@@ -43,6 +120,9 @@ shared_state = {
             'green_time': 10,
             'image': None,
             'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0},
+            'has_emergency': False,
+            'emergency_count': 0,
+            'frames_without_emergency': 0,
             'occupancy_rate': 0.0,
             'queue_length': 0,
             'avg_speed': 0,
@@ -54,6 +134,9 @@ shared_state = {
             'green_time': 10,
             'image': None,
             'vehicle_types': {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0},
+            'has_emergency': False,
+            'emergency_count': 0,
+            'frames_without_emergency': 0,
             'occupancy_rate': 0.0,
             'queue_length': 0,
             'avg_speed': 0,
@@ -64,7 +147,13 @@ shared_state = {
 }
 
 
-def _update_lane(lane: str, count: int, processed_name: str | None, classes: dict | None = None):
+def _update_lane(
+    lane: str,
+    count: int,
+    processed_name: str | None,
+    classes: dict | None = None,
+    emergency_override: bool = False,
+):
     lane = lane if lane in shared_state['lanes'] else 'lane1'
     g = calculate_green_time(count)
     shared_state['lanes'][lane]['count'] = int(count)
@@ -117,6 +206,21 @@ def _update_lane(lane: str, count: int, processed_name: str | None, classes: dic
     volume_5m = sum(h.get('count', 0) for h in history)
     shared_state['lanes'][lane]['traffic_volume_5m'] = int(volume_5m)
 
+    # Emergency detection / persistence
+    emergency_present = emergency_override or _is_emergency_vehicle(classes)
+    if emergency_present:
+        shared_state['lanes'][lane]['has_emergency'] = True
+        shared_state['lanes'][lane]['emergency_count'] = int(shared_state['lanes'][lane].get('emergency_count') or 0) + 1
+        shared_state['lanes'][lane]['frames_without_emergency'] = 0
+    else:
+        shared_state['lanes'][lane]['frames_without_emergency'] = int(shared_state['lanes'][lane].get('frames_without_emergency') or 0) + 1
+        if shared_state['lanes'][lane]['frames_without_emergency'] >= int(shared_state.get('emergency_threshold') or 5):
+            shared_state['lanes'][lane]['has_emergency'] = False
+            shared_state['lanes'][lane]['emergency_count'] = 0
+            shared_state['lanes'][lane]['frames_without_emergency'] = 0
+
+    _recompute_emergency_state()
+
 @app.route('/data')
 def data():
     return jsonify(shared_state)
@@ -151,11 +255,15 @@ def clear_lane():
     shared_state['lanes'][lane]['count'] = 0
     shared_state['lanes'][lane]['green_time'] = calculate_green_time(0)
     shared_state['lanes'][lane]['vehicle_types'] = {'car': 0, 'truck': 0, 'bus': 0, 'two_wheeler': 0, 'bicycle': 0}
+    shared_state['lanes'][lane]['has_emergency'] = False
+    shared_state['lanes'][lane]['emergency_count'] = 0
+    shared_state['lanes'][lane]['frames_without_emergency'] = 0
     shared_state['lanes'][lane]['occupancy_rate'] = 0.0
     shared_state['lanes'][lane]['queue_length'] = 0
     shared_state['lanes'][lane]['avg_speed'] = 0
     shared_state['lanes'][lane]['traffic_history'] = []
     shared_state['lanes'][lane]['traffic_volume_5m'] = 0
+    _recompute_emergency_state()
     return jsonify({'status': 'cleared', 'lanes': shared_state['lanes']})
 
 
@@ -168,6 +276,7 @@ def upload_image():
     os.makedirs(processed_dir, exist_ok=True)
 
     lane = request.form.get('lane') or (request.args.get('lane') or None)
+    emergency_override = _truthy(request.form.get('emergency') or request.args.get('emergency'))
     if 'image' in request.files:
         f = request.files['image']
         if f.filename == '':
@@ -178,6 +287,7 @@ def upload_image():
     else:
         payload = request.get_json(silent=True) or {}
         data_url = payload.get('image')
+        emergency_override = emergency_override or _truthy(payload.get('emergency'))
         if not data_url:
             return jsonify({'error': 'no image provided'}), 400
         if ',' in data_url:
@@ -191,13 +301,15 @@ def upload_image():
     processed_name, vehicles, classes = process_image(in_path, processed_dir)
     green = calculate_green_time(vehicles)
     if lane:
-        _update_lane(lane, vehicles, processed_name, classes)
+        _update_lane(lane, vehicles, processed_name, classes, emergency_override=emergency_override)
     return jsonify({
         'processed_image': f"/static/processed/{processed_name}",
         'vehicles': vehicles,
         'green_time': green,
         'classes': classes,
-        'lanes': shared_state['lanes']
+        'lanes': shared_state['lanes'],
+        'emergency_detected': shared_state.get('emergency_detected', False),
+        'emergency_lane': shared_state.get('emergency_lane'),
     })
 
 
@@ -219,11 +331,12 @@ def upload_multi():
             f = request.files.get(lane)
             if not f:
                 continue
+            emergency_override = _truthy(request.form.get(f"{lane}_emergency"))
             filename = secure_filename(f.filename or f"{lane}.jpg")
             in_path = os.path.join(upload_dir, filename)
             f.save(in_path)
             processed_name, vehicles, classes = process_image(in_path, processed_dir)
-            _update_lane(lane, vehicles, processed_name, classes)
+            _update_lane(lane, vehicles, processed_name, classes, emergency_override=emergency_override)
             results[lane] = {
                 'processed_image': f"/static/processed/{processed_name}",
                 'vehicles': vehicles,
@@ -233,6 +346,7 @@ def upload_multi():
     else:
         data = request.get_json(silent=True) or {}
         images = (data.get('images') or {}) if isinstance(data, dict) else {}
+        emergency_map = (data.get('emergency') or {}) if isinstance(data, dict) else {}
         for lane, img_b64 in images.items():
             if lane not in ('lane1', 'lane2', 'lane3', 'lane4'):
                 continue
@@ -244,7 +358,8 @@ def upload_multi():
             with open(in_path, 'wb') as fh:
                 fh.write(raw)
             processed_name, vehicles, classes = process_image(in_path, processed_dir)
-            _update_lane(lane, vehicles, processed_name, classes)
+            emergency_override = _truthy(emergency_map.get(lane)) if isinstance(emergency_map, dict) else False
+            _update_lane(lane, vehicles, processed_name, classes, emergency_override=emergency_override)
             results[lane] = {
                 'processed_image': f"/static/processed/{processed_name}",
                 'vehicles': vehicles,
@@ -255,7 +370,13 @@ def upload_multi():
     # Build order by highest count
     order = sorted(shared_state['lanes'].items(), key=lambda kv: kv[1]['count'], reverse=True)
     order = [k for k, _ in order]
-    return jsonify({'lanes': shared_state['lanes'], 'results': results, 'order': order})
+    return jsonify({
+        'lanes': shared_state['lanes'],
+        'results': results,
+        'order': order,
+        'emergency_detected': shared_state.get('emergency_detected', False),
+        'emergency_lane': shared_state.get('emergency_lane'),
+    })
 
 
 def start_detector_and_gpio():
