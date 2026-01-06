@@ -103,8 +103,10 @@
         <div style="margin-top:10px">
             <button id="startCycleBtn">Start Signal Cycle</button>
             <button id="stopCycleBtn" style="background:#ef4444; margin-left:8px;">Stop</button>
+            <button id="clearEmergencyBtn" style="background:#475569; margin-left:8px;">Clear Emergency</button>
             <small style="margin-left:10px; opacity:0.8;">Cycle order is based on current lane counts (highest first).</small>
         </div>
+        <div style="margin-top:8px; opacity:0.8;">Emergency override: click a lane above to hold it GREEN until cleared.</div>
     </div>
 
     <div class="card" style="max-width:900px; width:95%; text-align:left;">
@@ -266,6 +268,10 @@ const countEls = {
 let laneCounts = { lane1: 0, lane2: 0, lane3: 0, lane4: 0 };
 let laneGreen = { lane1: 10, lane2: 10, lane3: 10, lane4: 10 };
 let cycling = false;
+let emergencyActive = false;
+let emergencyLane = null;
+let resumeCycleAfterEmergency = false;
+let cycleRunId = 0;
 let stream = null;
 let fixedOrder = null; // set by "Use order" button
 const laneTimerEls = {
@@ -499,6 +505,45 @@ function resetLaneTimers() {
     Object.values(laneTimerEls).forEach(el => { if (el) el.textContent = '-'; });
 }
 
+function setAllReds() {
+    ['lane1','lane2','lane3','lane4'].forEach(l => setLights(l, 'red'));
+}
+
+function activateEmergency(lane) {
+    if (!lane) return;
+    emergencyActive = true;
+    emergencyLane = lane;
+    resumeCycleAfterEmergency = cycling || resumeCycleAfterEmergency;
+
+    // cancel any running cycle immediately
+    cycling = false;
+    cycleRunId++;
+
+    resetLaneTimers();
+    openLane.textContent = `Emergency — ${lane.replace('lane','Lane ')}`;
+    openSeconds.textContent = '—';
+    setAllReds();
+    setLights(lane, 'green');
+}
+
+function clearEmergency() {
+    const shouldResume = resumeCycleAfterEmergency;
+    emergencyActive = false;
+    emergencyLane = null;
+    resumeCycleAfterEmergency = false;
+
+    resetLaneTimers();
+    openLane.textContent = 'Lane 1';
+    openSeconds.textContent = '0';
+    setAllReds();
+
+    if (shouldResume) {
+        cycling = true;
+        cycleRunId++;
+        runCycle(cycleRunId);
+    }
+}
+
 async function clearLane(lane) {
     try {
         const res = await fetch('/clear-lane', {
@@ -520,26 +565,52 @@ async function clearLane(lane) {
     }
 }
 
-document.getElementById('startCycleBtn').addEventListener('click', () => {
-    cycling = true;
-    runCycle();
-});
-document.getElementById('stopCycleBtn').addEventListener('click', () => {
-    cycling = false;
-    resetLaneTimers();
-    openSeconds.textContent = '0';
-});
-
-async function runCycle() {
-    while (cycling) {
-        // pick order based on counts (highest first). If all zero, use numeric order
-
+// bind delete/reset buttons once
 deleteButtons.forEach(btn => {
     btn.addEventListener('click', () => {
         const lane = btn.getAttribute('data-lane');
         clearLane(lane);
     });
 });
+
+// click a lane in the signal display to force emergency override
+['lane1','lane2','lane3','lane4'].forEach(lane => {
+    const el = document.getElementById(lane);
+    if (!el) return;
+    el.addEventListener('click', () => activateEmergency(lane));
+});
+
+document.getElementById('startCycleBtn').addEventListener('click', () => {
+    if (emergencyActive) {
+        alert('Emergency override is active. Clear emergency to resume normal cycling.');
+        return;
+    }
+    cycling = true;
+    cycleRunId++;
+    runCycle(cycleRunId);
+});
+document.getElementById('stopCycleBtn').addEventListener('click', () => {
+    cycling = false;
+    cycleRunId++;
+    resetLaneTimers();
+    if (emergencyActive && emergencyLane) {
+        openLane.textContent = `Emergency — ${emergencyLane.replace('lane','Lane ')}`;
+        openSeconds.textContent = '—';
+        setAllReds();
+        setLights(emergencyLane, 'green');
+    } else {
+        openSeconds.textContent = '0';
+        setAllReds();
+    }
+});
+
+document.getElementById('clearEmergencyBtn').addEventListener('click', () => {
+    clearEmergency();
+});
+
+async function runCycle(runId) {
+    while (cycling && runId === cycleRunId && !emergencyActive) {
+        // pick order based on counts (highest first). If all zero, use numeric order
         let entries;
         if (Array.isArray(fixedOrder) && fixedOrder.length) {
             entries = fixedOrder.map(l => [l, laneCounts[l] ?? 0]);
@@ -551,28 +622,28 @@ deleteButtons.forEach(btn => {
         const plan = entries.map(([lane,count]) => ({ lane, duration: computeGreenTime(count) }));
         for (let idx=0; idx<plan.length; idx++) {
             const { lane, duration } = plan[idx];
-            if (!cycling) break;
+            if (!cycling || runId !== cycleRunId || emergencyActive) break;
             openLane.textContent = lane.replace('lane','Lane ');
             openSeconds.textContent = duration;
             // set all reds
-            ['lane1','lane2','lane3','lane4'].forEach(l => setLights(l, 'red'));
+            setAllReds();
             setLights(lane, 'green');
             resetLaneTimers();
-            await countdown(plan, idx);
+            await countdown(plan, idx, runId);
             // amber 2s
             setLights(lane, 'amber');
             await sleep(2000);
         }
     }
-    // after stop, set all red
-    ['lane1','lane2','lane3','lane4'].forEach(l => setLights(l, 'red'));
+    // after stop, set all red (unless emergency is holding a lane)
+    if (!emergencyActive) setAllReds();
     resetLaneTimers();
 }
 
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
-async function countdown(plan, currentIdx){
+async function countdown(plan, currentIdx, runId){
     const current = plan[currentIdx];
-    for (let s=current.duration; s>0 && cycling; s--) {
+    for (let s=current.duration; s>0 && cycling && runId === cycleRunId && !emergencyActive; s--) {
         openSeconds.textContent = s;
         updateLaneTimers(plan, currentIdx, s);
         await sleep(1000);
