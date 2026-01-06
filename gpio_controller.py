@@ -41,6 +41,14 @@ class GPIOController:
         else:
             print(f"GPIO mock: green for {duration}s")
 
+    def emergency_mode(self, duration=15):
+        """Flash green light for emergency vehicles."""
+        self.set_light('green')
+        if ON_RPI:
+            time.sleep(duration)
+        else:
+            print(f"GPIO mock: EMERGENCY MODE - green for {duration}s")
+
     def cleanup(self):
         if ON_RPI:
             GPIO.cleanup()
