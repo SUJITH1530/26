@@ -64,6 +64,25 @@
             L3: <span id="c_lane3">0</span> | 
             L4: <span id="c_lane4">0</span>
         </div>
+        <div style="margin-top:12px; border-top:1px solid rgba(255,255,255,0.12); padding-top:10px;">
+            <div style="font-weight:600; margin-bottom:6px;">Total Traffic Flow (All Lanes)</div>
+            <div style="display:flex; gap:14px; flex-wrap:wrap; opacity:0.95;">
+                <div>Cars: <span id="total_car">0</span></div>
+                <div>Trucks: <span id="total_truck">0</span></div>
+                <div>Buses: <span id="total_bus">0</span></div>
+                <div>Two-Wheelers: <span id="total_two_wheeler">0</span></div>
+                <div>Bicycles: <span id="total_bicycle">0</span></div>
+                <div><b>Total:</b> <span id="total_all">0</span></div>
+            </div>
+        </div>
+        <div style="margin-top:12px; border-top:1px solid rgba(255,255,255,0.12); padding-top:10px;">
+            <div style="font-weight:600; margin-bottom:6px;">Average Metrics</div>
+            <div style="display:flex; gap:18px; flex-wrap:wrap; opacity:0.95;">
+                <div>Occupancy: <span id="avg_occ">0%</span></div>
+                <div>Queue Length: <span id="avg_queue">0</span></div>
+                <div>Speed: <span id="avg_speed">--</span> km/h</div>
+            </div>
+        </div>
         <div style="margin-top:10px">
             <b>Suggested order</b>: <span id="orderBadges"></span>
             <button id="useOrderBtn" style="margin-left:8px;">Use order</button>
@@ -214,6 +233,19 @@ const multiInput = document.getElementById('multiInput');
 const useOrderBtn = document.getElementById('useOrderBtn');
 const clearOrderBtn = document.getElementById('clearOrderBtn');
 const orderBadges = document.getElementById('orderBadges');
+const totalFlowEls = {
+    car: document.getElementById('total_car'),
+    truck: document.getElementById('total_truck'),
+    bus: document.getElementById('total_bus'),
+    two_wheeler: document.getElementById('total_two_wheeler'),
+    bicycle: document.getElementById('total_bicycle'),
+    total: document.getElementById('total_all'),
+};
+const avgMetricEls = {
+    occ: document.getElementById('avg_occ'),
+    queue: document.getElementById('avg_queue'),
+    speed: document.getElementById('avg_speed'),
+};
 const previewImgs = {
     lane1: document.getElementById('img_lane1'),
     lane2: document.getElementById('img_lane2'),
@@ -434,6 +466,13 @@ function applyServerLanes(lanes) {
         lane4: (lanes.lane4 && lanes.lane4.green_time) ?? laneGreen.lane4,
     };
     Object.keys(countEls).forEach(k => { countEls[k].textContent = laneCounts[k]; });
+    // aggregate totals + averages
+    const totals = { car: 0, truck: 0, bus: 0, two_wheeler: 0, bicycle: 0 };
+    let occSum = 0;
+    let queueSum = 0;
+    let speedSum = 0;
+    let laneMetricCount = 0;
+
     // update previews
     ['lane1','lane2','lane3','lane4'].forEach(l => {
         const img = lanes[l] && lanes[l].image;
@@ -446,6 +485,12 @@ function applyServerLanes(lanes) {
             const tw = vt.two_wheeler ?? 0;
             const bikes = vt.bicycle ?? 0;
             vehicleDistEls[l].textContent = `Vehicle Distribution — Cars: ${cars} Trucks: ${trucks} Buses: ${buses} Two-Wheelers: ${tw} Bicycles: ${bikes}`;
+
+            totals.car += Number(cars) || 0;
+            totals.truck += Number(trucks) || 0;
+            totals.bus += Number(buses) || 0;
+            totals.two_wheeler += Number(tw) || 0;
+            totals.bicycle += Number(bikes) || 0;
         }
         const metrics = laneMetricsEls[l];
         if (metrics && lanes[l]) {
@@ -457,8 +502,31 @@ function applyServerLanes(lanes) {
             if (metrics.queue) metrics.queue.textContent = queue;
             if (metrics.speed) metrics.speed.textContent = speed;
             if (metrics.vol) metrics.vol.textContent = vol;
+
+            if (typeof occ === 'number' && !Number.isNaN(occ)) occSum += occ;
+            queueSum += Number(queue) || 0;
+            if (typeof speed === 'number' && !Number.isNaN(speed)) speedSum += speed;
+            laneMetricCount += 1;
         }
     });
+
+    // update totals + averages blocks
+    const totalAll = totals.car + totals.truck + totals.bus + totals.two_wheeler + totals.bicycle;
+    if (totalFlowEls.car) totalFlowEls.car.textContent = String(totals.car);
+    if (totalFlowEls.truck) totalFlowEls.truck.textContent = String(totals.truck);
+    if (totalFlowEls.bus) totalFlowEls.bus.textContent = String(totals.bus);
+    if (totalFlowEls.two_wheeler) totalFlowEls.two_wheeler.textContent = String(totals.two_wheeler);
+    if (totalFlowEls.bicycle) totalFlowEls.bicycle.textContent = String(totals.bicycle);
+    if (totalFlowEls.total) totalFlowEls.total.textContent = String(totalAll);
+
+    const denom = laneMetricCount || 1;
+    const avgOcc = occSum / denom;
+    const avgQueue = queueSum / denom;
+    const avgSpeed = speedSum / denom;
+    if (avgMetricEls.occ) avgMetricEls.occ.textContent = `${Math.round(avgOcc)}%`;
+    if (avgMetricEls.queue) avgMetricEls.queue.textContent = String(Math.round(avgQueue));
+    if (avgMetricEls.speed) avgMetricEls.speed.textContent = Number.isFinite(avgSpeed) ? String(Math.round(avgSpeed)) : '--';
+
     updateDensityBadges();
     const order = Object.entries(laneCounts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).map(e=>e[0]);
     showOrder(order);
